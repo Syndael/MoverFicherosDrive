@@ -5,6 +5,7 @@ import ConfigParser
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
+from datetime import date
 from httplib2 import Http
 from oauth2client import client, file, tools
 
@@ -16,19 +17,35 @@ configParser = None
 
 def main():
     directorioMover = getConfigParser().get('config', 'directorio')
+
     destinoGDrive = getConfigParser().get('config', 'destinoGDrive')
     destinoGDriveSubcarpeta = getConfigParser().get(
         'config', 'destinoGDriveSubcarpeta')
-
-    ficheros = []
-    for r, d, f in os.walk(directorioMover):
-        for fichero in f:
-            ficheros.append(fichero)
 
     destinoFichero = destinoGDrive
     if destinoGDriveSubcarpeta:
         destinoFichero = buscarCrearCarpetaDrive(
             destinoGDriveSubcarpeta, destinoGDrive)
+
+    fechaActual = date.today()
+    destinoFichero = buscarCrearCarpetaDrive(
+        str(fechaActual.year), destinoFichero)
+    destinoFichero = buscarCrearCarpetaDrive(
+        str(fechaActual.month), destinoFichero)
+    destinoFichero = buscarCrearCarpetaDrive(
+        str(fechaActual.day), destinoFichero)
+
+    for r, d, f in os.walk(directorioMover):
+        for fichero in f:
+            rutaCompleta = (r + "\\" + fichero)
+            subirFichero(destinoFichero, fichero,  rutaCompleta)
+
+
+def subirFichero(carpetaDestinoId, fichero, rutaCompleta):
+    metadata = {'title': fichero, 'name': fichero,
+                'parents': [carpetaDestinoId]}
+    destino = getDriveService().files().create(
+        body=metadata, media_body=rutaCompleta, fields='id').execute()
 
 
 def getConfigParser():
