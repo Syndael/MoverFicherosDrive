@@ -1,0 +1,6 @@
+[config]
+directorio = B:\Escritorio\Todo\Programacion\MoverFicherosDrive\dirTest
+destinoGDrive = 1i0RJ-rTYcaF24U1ngLqDhCb7wEp1Ev8B
+destinoGDriveSubcarpeta = SynEnder
+rutaCreedenciales = credentials.json
+clienteSecreto = client_secret.json

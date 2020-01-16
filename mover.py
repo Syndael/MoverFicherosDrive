@@ -1,49 +1,121 @@
 from __future__ import print_function
 import pickle
-import os.path
+import os
+import ConfigParser
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
+from httplib2 import Http
+from oauth2client import client, file, tools
 
-# If modifying these scopes, delete the file token.pickle.
-SCOPES = ['https://www.googleapis.com/auth/drive.metadata.readonly']
+SCOPES = ['https://www.googleapis.com/auth/drive.file']
+
+driveService = None
+configParser = None
+
 
 def main():
-    """Shows basic usage of the Drive v3 API.
-    Prints the names and ids of the first 10 files the user has access to.
-    """
-    creds = None
-    # The file token.pickle stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
-    if os.path.exists('token.pickle'):
-        with open('token.pickle', 'rb') as token:
-            creds = pickle.load(token)
-    # If there are no (valid) credentials available, let the user log in.
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                'credentials.json', SCOPES)
-            creds = flow.run_local_server(port=0)
-        # Save the credentials for the next run
-        with open('token.pickle', 'wb') as token:
-            pickle.dump(creds, token)
+    directorioMover = getConfigParser().get('config', 'directorio')
+    destinoGDrive = getConfigParser().get('config', 'destinoGDrive')
+    destinoGDriveSubcarpeta = getConfigParser().get(
+        'config', 'destinoGDriveSubcarpeta')
 
-    service = build('drive', 'v3', credentials=creds)
+    ficheros = []
+    for r, d, f in os.walk(directorioMover):
+        for fichero in f:
+            ficheros.append(fichero)
 
-    # Call the Drive v3 API
-    results = service.files().list(
-        pageSize=10, fields="nextPageToken, files(id, name)").execute()
-    items = results.get('files', [])
+    destinoFichero = destinoGDrive
+    if destinoGDriveSubcarpeta:
+        destinoFichero = buscarCrearCarpetaDrive(
+            destinoGDriveSubcarpeta, destinoGDrive)
 
-    if not items:
-        print('No files found.')
-    else:
-        print('Files:')
-        for item in items:
-            print(u'{0} ({1})'.format(item['name'], item['id']))
+
+def getConfigParser():
+    global configParser
+    if configParser is None:
+        configParser = ConfigParser.RawConfigParser()
+        configFilePath = r'config.txt'
+        configParser.read(configFilePath)
+
+    return configParser
+
+
+def getDriveService():
+    global driveService
+    if driveService is None:
+        rutaCreedenciales = getConfigParser().get('config', 'rutaCreedenciales')
+        clienteSecreto = getConfigParser().get('config', 'clienteSecreto')
+        store = file.Storage(rutaCreedenciales)
+        creds = store.get()
+        if not creds or creds.invalid:
+            flow = client.flow_from_clientsecrets(clienteSecreto, SCOPES)
+            creds = tools.run_flow(flow, store)
+        driveService = build(
+            'drive', 'v3', cache_discovery=False, http=creds.authorize(Http()))
+
+    return driveService
+
+
+def buscarCarpetaDrive(folder_name='', parentID=None):
+    try:
+        if folder_name != '':
+            page_token = None
+            while True:
+                if(parentID):
+                    print("Buscando la carpeta ", folder_name,
+                          " en drive dentro de ", parentID)
+                    response = getDriveService().files().list(q='(mimeType = \'application/vnd.google-apps.folder\') and (name = \'' + folder_name + '\') and (trashed = false) and (\'' +
+                                                              parentID + '\' in parents)', spaces='drive', fields='nextPageToken, files(id, name)', pageToken=page_token).execute()
+                else:
+                    response = getDriveService().files().list(q='(mimeType = \'application/vnd.google-apps.folder\') and (name = \'' + folder_name +
+                                                              '\') and (trashed = false)', spaces='drive', fields='nextPageToken, files(id, name)', pageToken=page_token).execute()
+                for file in response.get('files', []):
+                    idCarpeta = file.get('id')
+                    print(
+                        "Se ha encontrado carpeta en drive(id=", idCarpeta, ") llamada ", folder_name)
+                    return idCarpeta
+                page_token = response.get('nextPageToken', None)
+                if page_token is None:
+                    break
+            print("No se ha encontrado carpeta en drive con nombre ", folder_name)
+        return ''
+    except Exception as ex:
+        print("Se ha producido un error al buscar la carpeta ",
+              folder_name, " en GDrive: ", str(ex))
+        return None
+
+
+def crearCarpetaDrive(folderName, parentID=None, compartir=None):
+    try:
+        body = {
+            'name': folderName,
+            'mimeType': "application/vnd.google-apps.folder"
+        }
+        if parentID:
+            print("Se creara una carpeta en drive dentro de ", parentID)
+            body['parents'] = [parentID]
+        root_folder = getDriveService().files().create(body=body).execute()
+        idCarpeta = root_folder['id']
+        print(
+            "Se ha creado una carpeta en drive(id=", idCarpeta, ")")
+        if (compartir):
+            getDriveService().permissions().create(
+                body={"role": "reader", "type": "anyone"}, fileId=idCarpeta).execute()
+        return idCarpeta
+    except Exception as ex:
+        print(
+            "Caught an exception in crearCarpetaDrive(): " + str(ex))
+
+
+def buscarCrearCarpetaDrive(folderName, parentID=None, compartir=None):
+    print("Carpeta en drive id: ", parentID)
+    carpetaEncontrada = buscarCarpetaDrive(folderName, parentID)
+    if carpetaEncontrada == '':
+        carpetaEncontrada = crearCarpetaDrive(
+            folderName, parentID, compartir)
+    return carpetaEncontrada
+
 
 if __name__ == '__main__':
     main()
