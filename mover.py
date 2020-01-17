@@ -1,6 +1,7 @@
 from __future__ import print_function
 import pickle
 import os
+import shutil
 import ConfigParser
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -16,11 +17,11 @@ configParser = None
 
 
 def main():
-    directorioMover = getConfigParser().get('config', 'directorio')
-
-    destinoGDrive = getConfigParser().get('config', 'destinoGDrive')
-    destinoGDriveSubcarpeta = getConfigParser().get(
-        'config', 'destinoGDriveSubcarpeta')
+    directorioMover = getConfigParserGet('directorio')
+    destinoGDrive = getConfigParserGet('destinoGDrive')
+    destinoGDriveSubcarpeta = getConfigParserGet('destinoGDriveSubcarpeta')
+    rutaBackup = getConfigParserGet('rutaBackup')
+    extensionesPermitidas = getConfigParserGet('extensionesPermitidas')
 
     destinoFichero = destinoGDrive
     if destinoGDriveSubcarpeta:
@@ -37,15 +38,26 @@ def main():
 
     for r, d, f in os.walk(directorioMover):
         for fichero in f:
-            rutaCompleta = (r + "\\" + fichero)
-            subirFichero(destinoFichero, fichero,  rutaCompleta)
+            if fichero.split(".")[-1] in str(extensionesPermitidas):
+                rutaCompleta = os.path.join(r, fichero)
+                subirFichero(destinoFichero, fichero,  rutaCompleta)
+                if rutaBackup:
+                    print("Moviendo ", fichero, " a la carpeta ", rutaBackup)
+                    shutil.move(rutaCompleta, rutaBackup)
+        break
 
 
 def subirFichero(carpetaDestinoId, fichero, rutaCompleta):
     metadata = {'title': fichero, 'name': fichero,
                 'parents': [carpetaDestinoId]}
+    print("Subiendo fichero ", fichero, " a la carpeta ", carpetaDestinoId)
     destino = getDriveService().files().create(
         body=metadata, media_body=rutaCompleta, fields='id').execute()
+    print("Fichero subido correctamente")
+
+
+def getConfigParserGet(clave):
+    return getConfigParser().get('config', clave)
 
 
 def getConfigParser():
