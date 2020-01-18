@@ -22,7 +22,8 @@ def main():
     rutaBackup = getConfigParserGet('rutaBackup')
     extensionesPermitidas = getConfigParserGet('extensionesPermitidas')
 
-    logging.basicConfig(filename='mover.log', filemode='a',
+    ficheroLog = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'mover.log')
+    logging.basicConfig(filename=ficheroLog, filemode='a',
                         format='%(asctime)s - %(levelname)s - %(message)s', datefmt='%d/%m/%Y %H:%M:%S', level=logging.INFO)
 
     algoPendiente = False
