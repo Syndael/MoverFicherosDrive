@@ -3,6 +3,7 @@ import pickle
 import os
 import shutil
 import ConfigParser
+import logging
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -18,10 +19,37 @@ configParser = None
 
 def main():
     directorioMover = getConfigParserGet('directorio')
-    destinoGDrive = getConfigParserGet('destinoGDrive')
-    destinoGDriveSubcarpeta = getConfigParserGet('destinoGDriveSubcarpeta')
     rutaBackup = getConfigParserGet('rutaBackup')
     extensionesPermitidas = getConfigParserGet('extensionesPermitidas')
+
+    logging.basicConfig(filename='mover.log', filemode='a',
+                        format='%(asctime)s - %(levelname)s - %(message)s', datefmt='%d/%m/%Y %H:%M:%S', level=logging.INFO)
+
+    algoPendiente = False
+    for r, d, f in os.walk(directorioMover):
+        for fichero in f:
+            algoPendiente = algoPendiente or fichero.split(
+                ".")[-1] in str(extensionesPermitidas)
+        break
+
+    if algoPendiente:
+        destinoFichero = generarEncontrarEstructura()
+        for r, d, f in os.walk(directorioMover):
+            for fichero in f:
+                if fichero.split(".")[-1] in str(extensionesPermitidas):
+                    rutaCompleta = os.path.join(r, fichero)
+                    subirFichero(destinoFichero, fichero,  rutaCompleta)
+                    if rutaBackup:
+                        logging.info(str("Moviendo " + fichero + " a la carpeta " + rutaBackup))
+                        shutil.move(rutaCompleta, rutaBackup)
+            break
+    else:
+        logging.info('No hay ficheros pendientes')
+
+
+def generarEncontrarEstructura():
+    destinoGDrive = getConfigParserGet('destinoGDrive')
+    destinoGDriveSubcarpeta = getConfigParserGet('destinoGDriveSubcarpeta')
 
     destinoFichero = destinoGDrive
     if destinoGDriveSubcarpeta:
@@ -36,24 +64,7 @@ def main():
     destinoFichero = buscarCrearCarpetaDrive(
         str(fechaActual.day), destinoFichero)
 
-    for r, d, f in os.walk(directorioMover):
-        for fichero in f:
-            if fichero.split(".")[-1] in str(extensionesPermitidas):
-                rutaCompleta = os.path.join(r, fichero)
-                subirFichero(destinoFichero, fichero,  rutaCompleta)
-                if rutaBackup:
-                    print("Moviendo ", fichero, " a la carpeta ", rutaBackup)
-                    shutil.move(rutaCompleta, rutaBackup)
-        break
-
-
-def subirFichero(carpetaDestinoId, fichero, rutaCompleta):
-    metadata = {'title': fichero, 'name': fichero,
-                'parents': [carpetaDestinoId]}
-    print("Subiendo fichero ", fichero, " a la carpeta ", carpetaDestinoId)
-    destino = getDriveService().files().create(
-        body=metadata, media_body=rutaCompleta, fields='id').execute()
-    print("Fichero subido correctamente")
+    return destinoFichero
 
 
 def getConfigParserGet(clave):
@@ -64,8 +75,9 @@ def getConfigParser():
     global configParser
     if configParser is None:
         configParser = ConfigParser.RawConfigParser()
-        configFilePath = r'config.txt'
-        configParser.read(configFilePath)
+        ficheroConfig = os.path.join(os.path.abspath(
+            os.path.dirname(__file__)), 'config.txt')
+        configParser.read(ficheroConfig)
 
     return configParser
 
@@ -86,14 +98,23 @@ def getDriveService():
     return driveService
 
 
+def subirFichero(carpetaDestinoId, fichero, rutaCompleta):
+    metadata = {'title': fichero, 'name': fichero,
+                'parents': [carpetaDestinoId]}
+    logging.info(str("Subiendo fichero " + fichero + " a la carpeta " + carpetaDestinoId))
+    destino = getDriveService().files().create(
+        body=metadata, media_body=rutaCompleta, fields='id').execute()
+    logging.info("Fichero subido correctamente")
+
+
 def buscarCarpetaDrive(folder_name='', parentID=None):
     try:
         if folder_name != '':
             page_token = None
             while True:
                 if(parentID):
-                    print("Buscando la carpeta ", folder_name,
-                          " en drive dentro de ", parentID)
+                    logging.info(str("Buscando la carpeta " + folder_name +
+                                     " en drive dentro de " + parentID))
                     response = getDriveService().files().list(q='(mimeType = \'application/vnd.google-apps.folder\') and (name = \'' + folder_name + '\') and (trashed = false) and (\'' +
                                                               parentID + '\' in parents)', spaces='drive', fields='nextPageToken, files(id, name)', pageToken=page_token).execute()
                 else:
@@ -101,17 +122,17 @@ def buscarCarpetaDrive(folder_name='', parentID=None):
                                                               '\') and (trashed = false)', spaces='drive', fields='nextPageToken, files(id, name)', pageToken=page_token).execute()
                 for file in response.get('files', []):
                     idCarpeta = file.get('id')
-                    print(
-                        "Se ha encontrado carpeta en drive(id=", idCarpeta, ") llamada ", folder_name)
+                    logging.info(str(
+                        "Se ha encontrado carpeta en drive(id=" + idCarpeta + ") llamada " + folder_name))
                     return idCarpeta
                 page_token = response.get('nextPageToken', None)
                 if page_token is None:
                     break
-            print("No se ha encontrado carpeta en drive con nombre ", folder_name)
+            logging.info(str("No se ha encontrado carpeta en drive con nombre " + folder_name))
         return ''
     except Exception as ex:
-        print("Se ha producido un error al buscar la carpeta ",
-              folder_name, " en GDrive: ", str(ex))
+        logging.error(str("Se ha producido un error al buscar la carpeta ",
+                          folder_name + " en GDrive: " + str(ex)))
         return None
 
 
@@ -122,23 +143,23 @@ def crearCarpetaDrive(folderName, parentID=None, compartir=None):
             'mimeType': "application/vnd.google-apps.folder"
         }
         if parentID:
-            print("Se creara una carpeta en drive dentro de ", parentID)
+            logging.info(str("Se creara una carpeta en drive dentro de " + parentID))
             body['parents'] = [parentID]
         root_folder = getDriveService().files().create(body=body).execute()
         idCarpeta = root_folder['id']
-        print(
-            "Se ha creado una carpeta en drive(id=", idCarpeta, ")")
+        logging.info(str(
+            "Se ha creado una carpeta en drive(id=" + idCarpeta + ")"))
         if (compartir):
             getDriveService().permissions().create(
                 body={"role": "reader", "type": "anyone"}, fileId=idCarpeta).execute()
         return idCarpeta
     except Exception as ex:
-        print(
-            "Caught an exception in crearCarpetaDrive(): " + str(ex))
+        logging.error(str(
+            "Caught an exception in crearCarpetaDrive(): " + str(ex)))
 
 
 def buscarCrearCarpetaDrive(folderName, parentID=None, compartir=None):
-    print("Carpeta en drive id: ", parentID)
+    logging.info(str("Carpeta en drive id: " + parentID))
     carpetaEncontrada = buscarCarpetaDrive(folderName, parentID)
     if carpetaEncontrada == '':
         carpetaEncontrada = crearCarpetaDrive(

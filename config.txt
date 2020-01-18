@@ -2,7 +2,7 @@
 directorio = B:\Escritorio\Todo\Programacion\MoverFicherosDrive\dirTest
 rutaBackup = B:\Escritorio\Todo\Programacion\MoverFicherosDrive\backup
 destinoGDrive = 1i0RJ-rTYcaF24U1ngLqDhCb7wEp1Ev8B
-destinoGDriveSubcarpeta = SynEnder
+destinoGDriveSubcarpeta = Pruebas
 extensionesPermitidas = [mp4, mpg]
 rutaCreedenciales = credentials.json
 clienteSecreto = client_secret.json
