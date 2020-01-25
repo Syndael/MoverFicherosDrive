@@ -4,12 +4,16 @@ import os
 import shutil
 import ConfigParser
 import logging
+import requests
+import urllib
+import mimetypes
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from datetime import date
 from httplib2 import Http
 from oauth2client import client, file, tools
+from apiclient.http import MediaFileUpload
 
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
 
@@ -39,10 +43,11 @@ def main():
             for fichero in f:
                 if fichero.split(".")[-1] in str(extensionesPermitidas):
                     rutaCompleta = os.path.join(r, fichero)
-                    subirFichero(destinoFichero, fichero,  rutaCompleta)
+                    urlFichero = subirFichero(destinoFichero, fichero,  rutaCompleta)
                     if rutaBackup:
                         logging.info(str("Moviendo " + fichero + " a la carpeta " + rutaBackup))
                         shutil.move(rutaCompleta, rutaBackup)
+                        enviarMensajeTelegram(fichero, urlFichero)
             break
     else:
         logging.info('No hay ficheros pendientes')
@@ -55,15 +60,15 @@ def generarEncontrarEstructura():
     destinoFichero = destinoGDrive
     if destinoGDriveSubcarpeta:
         destinoFichero = buscarCrearCarpetaDrive(
-            destinoGDriveSubcarpeta, destinoGDrive)
+            destinoGDriveSubcarpeta, destinoGDrive, True)
 
     fechaActual = date.today()
     destinoFichero = buscarCrearCarpetaDrive(
-        str(fechaActual.year), destinoFichero)
+        str(fechaActual.year), destinoFichero, True)
     destinoFichero = buscarCrearCarpetaDrive(
-        str(fechaActual.month), destinoFichero)
+        str(fechaActual.month), destinoFichero, True)
     destinoFichero = buscarCrearCarpetaDrive(
-        str(fechaActual.day), destinoFichero)
+        str(fechaActual.day), destinoFichero, True)
 
     return destinoFichero
 
@@ -86,8 +91,8 @@ def getConfigParser():
 def getDriveService():
     global driveService
     if driveService is None:
-        rutaCreedenciales = getConfigParser().get('config', 'rutaCreedenciales')
-        clienteSecreto = getConfigParser().get('config', 'clienteSecreto')
+        rutaCreedenciales = getConfigParserGet('rutaCreedenciales')
+        clienteSecreto = getConfigParserGet('clienteSecreto')
         store = file.Storage(rutaCreedenciales)
         creds = store.get()
         if not creds or creds.invalid:
@@ -100,12 +105,17 @@ def getDriveService():
 
 
 def subirFichero(carpetaDestinoId, fichero, rutaCompleta):
-    metadata = {'title': fichero, 'name': fichero,
-                'parents': [carpetaDestinoId]}
+    metadata = {'title': fichero, 'name': fichero, 'parents': [carpetaDestinoId]}
+    logging.info(metadata)
     logging.info(str("Subiendo fichero " + fichero + " a la carpeta " + carpetaDestinoId))
-    destino = getDriveService().files().create(
-        body=metadata, media_body=rutaCompleta, fields='id').execute()
+
+    media = MediaFileUpload(rutaCompleta, mimetype=mimetypes.guess_type(fichero)[0])
+    destino = getDriveService().files().create(body=metadata, media_body=media, fields='id').execute()
     logging.info("Fichero subido correctamente")
+    logging.info(destino['id'])
+    ficheroGdrive = getDriveService().files().get(
+        fileId=destino['id'], fields="webContentLink").execute()
+    return ficheroGdrive['webContentLink']
 
 
 def buscarCarpetaDrive(folder_name='', parentID=None):
@@ -166,6 +176,21 @@ def buscarCrearCarpetaDrive(folderName, parentID=None, compartir=None):
         carpetaEncontrada = crearCarpetaDrive(
             folderName, parentID, compartir)
     return carpetaEncontrada
+
+
+def enviarMensajeTelegram(nombreFichero, urlFichero):
+    telegramBotToken = getConfigParserGet('telegramBotToken')
+    telegramChatId = getConfigParserGet('telegramChatId')
+    telegramMensaje = getConfigParserGet('telegramMensaje')
+    if(telegramBotToken and telegramChatId):
+        mensaje = 'OK'
+        if(telegramMensaje):
+            nombreFichero = str('\'' + nombreFichero.split(".")[0].replace('_', ' ') + '\'')
+            mensaje = telegramMensaje.replace('[file]', nombreFichero).replace('[url]', urlFichero)
+        urlMensaje = str('https://api.telegram.org/bot' + telegramBotToken +
+                         '/sendMessage?chat_id=' + telegramChatId + '&parse_mode=Markdown&text=' + mensaje)
+        logging.info(urlMensaje)
+        requests.get(urlMensaje)
 
 
 if __name__ == '__main__':
