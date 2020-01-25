@@ -8,3 +8,4 @@ rutaCreedenciales = credentials.json
 clienteSecreto = client_secret.json
 telegramBotToken = <bot token>
 telegramChatId = <chat id>
+telegramMensaje = <message (params '[file]' '[url]')>
