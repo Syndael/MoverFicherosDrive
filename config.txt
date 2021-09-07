@@ -1,9 +1,17 @@
 [config]
-directorio = B:\dirTest
-rutaBackup = B:\backup
+# Modos soportados
+#   1 - Copia sencilla recursiva en destinoGDrive / destinoGDriveSubcarpeta / Año / Mes / Día
+#   2 - Busca a partir de <directorio>, con el nombre del primer directorio en Drive, copia la estructura de directo y mueve los ficheros dentro de esa ruta añadiendo los directorios definidos en destinoGDriveSubcarpeta
+modoCopia = 1
+separador = \
+directorio = C:\dirTest
+crearBackup = True
+rutaBackup = C:\backup
 destinoGDrive = <directory id>
 destinoGDriveSubcarpeta = Pruebas
-extensionesPermitidas = [mp4, mpg]
+destinoGDriveModo2Default = <directory id>
+compartirGDrive = True
+extensionesPermitidas = [mp4, mpg, jpeg]
 rutaCreedenciales = credentials.json
 clienteSecreto = client_secret.json
 telegramBotToken = <bot token>
